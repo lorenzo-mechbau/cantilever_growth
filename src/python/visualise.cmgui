@@ -6,19 +6,22 @@ gfx read element results/CantileverGrowth.part0.exelem
 gfx define faces egroup "Region"
 
 # define deformed geometry and pressure
-gfx define field "deformed" component Dependent.1 Dependent.2 Dependent.3
-gfx define field "pressure" component Dependent.4
+gfx define field "deformed" component Displacement.1 Displacement.2 Displacement.3
+gfx define field "pressure" component Displacement.4
 
-#Create windows
-gfx create window 1
-gfx modify window 1 set antialias 2
-gfx modify window 1 view parallel eye_point 20 -200 20 interest_point 20 20 20 up_vector 0 0 1 view_angle 40 near_clipping_plane 1.5 far_clipping_plane 700 relative_viewport ndc_placement -1 1 2 2 viewport_coordinates 0 0 1 1
-gfx modify window 1 view interest_point 1.0,0.5,0.0 eye_point 1.0,0.5,5.0 up_vector 0.0,1.0,0.0
+#Create the graphics window and set view angles
+gfx create window 1 double_buffer;
+gfx modify window 1 image add_light default;
+gfx modify window 1 layout simple ortho_axes z -y eye_spacing 0.25 height 1000 width 1500;
+gfx modify window 1 set current_pane 1;
+gfx modify window 1 background colour 0 0 0 texture none;
+gfx modify window 1 view parallel eye_point -45.0 20.0 45.0 interest_point 5.0 5.0 15.0 up_vector 0.30 0.95 -0.10 view_angle 40 near_clipping_plane 0.01 far_clipping_plane 150.0
 
+g
 #Display deformed geometry
 gfx modify g_element "Region" lines coordinate deformed select_on material red 
-#gfx modify g_element "Region" surfaces coordinate deformed select_on material tissue 
-#gfx modify g_element "Region" node_points coordinate deformed glyph sphere General size "2*2*2" centre 0,0,0 font default select_on material default
+gfx modify g_element "Region" surfaces coordinate deformed select_on material tissue 
+gfx modify g_element "Region" node_points coordinate deformed glyph sphere General size "2*2*2" centre 0,0,0 font default select_on material default
 
 #Display undeformed lines
 gfx modify g_element "Region" lines select_on material green 

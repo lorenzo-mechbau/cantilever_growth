@@ -48,33 +48,49 @@ import sys, os
 # Intialise OpenCMISS
 from opencmiss.iron import iron
 
+CONSTANT_LAGRANGE = 0
+LINEAR_LAGRANGE = 1
+QUADRATIC_LAGRANGE = 2
+CUBIC_LAGRANGE = 3
+
 # Set the physical size of the cantilever
-length = 5.0
-width = 1.0
-height = 1.0
+width = 10.0
+length = 30.0
+height = 10.0
 
 # Set the number of elements in the cantilever
-numberXElements = 5
-numberYElements = 1
-numberZElements = 1
+numberOfGlobalXElements = 1
+numberOfGlobalYElements = 1
+numberOfGlobalZElements = 3
 
-# Set the number of Gauss points to use in each direction
-numberOfGaussXi = 3
+# Set the interpolation
+uInterpolation = QUADRATIC_LAGRANGE
+pInterpolation = LINEAR_LAGRANGE
 
 # Set the growth rates
-xGrowthRate = 0.02
-yGrowthRate = 0.0
-zGrowthRate = 0.0
+fibreRate = 0.001 #Or x direction growth
+sheetRate = 0.1 #Or y direction growth
+normalRate = 0.05 #Or z direction growth
 
 # Set the similation times.
 startTime = 0.0
-stopTime = 10.0
+stopTime = 3.0
 timeIncrement = 1.0
+
+# materials parameters
+c1 = 2.0
+c2 = 6.0
+
+force = -0.3
+
+pInit = -6.0
+pRef = 0.0
 
 # Set the user numbers
 coordinateSystemUserNumber = 1
 regionUserNumber = 1
-basisUserNumber = 1
+uBasisUserNumber = 1
+pBasisUserNumber = 2
 generatedMeshUserNumber = 1
 meshUserNumber = 1
 decompositionUserNumber = 1
@@ -93,6 +109,28 @@ constituativeCellMLParametersFieldUserNumber = 10
 constituativeCellMLIntermediateFieldUserNumber = 11
 problemUserNumber = 1
 
+numberOfDimensions = 3
+
+if (uInterpolation == LINEAR_LAGRANGE):
+    numberOfNodesXi = 2
+    numberOfGaussXi = 2
+elif (uInterpolation == QUADRATIC_LAGRANGE):
+    numberOfNodesXi = 3
+    numberOfGaussXi = 3
+elif (uInterpolation == CUBIC_LAGRANGE):
+    numberOfNodesXi = 4
+    numberOfGaussXi = 3
+else:
+    print('Invalid u interpolation')
+    exit()
+
+numberOfXNodes = numberOfGlobalXElements*(numberOfNodesXi-1)+1
+numberOfYNodes = numberOfGlobalYElements*(numberOfNodesXi-1)+1
+numberOfZNodes = numberOfGlobalZElements*(numberOfNodesXi-1)+1
+numberOfNodes = numberOfXNodes*numberOfYNodes*numberOfZNodes
+
+#iron.DiagnosticsSetOn(iron.DiagnosticTypes.FROM,[1,2,3,4,5],"diagnostics",["FiniteElasticity_FiniteElementResidualEvaluate"])
+
 # Get the number of computational nodes and this computational node number
 numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
 computationalNodeNumber = iron.ComputationalNodeNumberGet()
@@ -100,32 +138,59 @@ computationalNodeNumber = iron.ComputationalNodeNumberGet()
 # Create a 3D rectangular cartesian coordinate system
 coordinateSystem = iron.CoordinateSystem()
 coordinateSystem.CreateStart(coordinateSystemUserNumber)
-coordinateSystem.DimensionSet(3)
+coordinateSystem.DimensionSet(numberOfDimensions)
 coordinateSystem.CreateFinish()
 
 # Create a region and assign the coordinate system to the region
 region = iron.Region()
 region.CreateStart(regionUserNumber,iron.WorldRegion)
 region.LabelSet("Region")
-region.coordinateSystem = coordinateSystem
+region.CoordinateSystemSet(coordinateSystem)
 region.CreateFinish()
 
-# Define a basis
-basis = iron.Basis()
-basis.CreateStart(basisUserNumber)
-basis.type = iron.BasisTypes.LAGRANGE_HERMITE_TP
-basis.numberOfXi = 3
-basis.interpolationXi = [iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE]*3
-basis.quadratureNumberOfGaussXi = [numberOfGaussXi]*3
-basis.CreateFinish()
+# Define basis functions
+
+uBasis = iron.Basis()
+uBasis.CreateStart(uBasisUserNumber)
+uBasis.NumberOfXiSet(numberOfDimensions)
+uBasis.TypeSet(iron.BasisTypes.LAGRANGE_HERMITE_TP)
+if (uInterpolation == LINEAR_LAGRANGE):
+    uBasis.InterpolationXiSet([iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE]*numberOfDimensions)
+elif (uInterpolation == QUADRATIC_LAGRANGE):
+    uBasis.InterpolationXiSet([iron.BasisInterpolationSpecifications.QUADRATIC_LAGRANGE]*numberOfDimensions)
+elif (uInterpolation == CUBIC_LAGRANGE):
+    uBasis.InterpolationXiSet([iron.BasisInterpolationSpecifications.CUBIC_LAGRANGE]*numberOfDimensions)
+else:
+    print('Invalid u interpolation')
+    exit()
+uBasis.QuadratureNumberOfGaussXiSet([numberOfGaussXi]*numberOfDimensions)
+uBasis.CreateFinish()
+
+if (pInterpolation > CONSTANT_LAGRANGE):
+    pBasis = iron.Basis()
+    pBasis.CreateStart(pBasisUserNumber)
+    pBasis.NumberOfXiSet(numberOfDimensions)
+    pBasis.TypeSet(iron.BasisTypes.LAGRANGE_HERMITE_TP)
+    if (pInterpolation == LINEAR_LAGRANGE):
+        pBasis.InterpolationXiSet([iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE]*numberOfDimensions)
+    elif (pInterpolation == QUADRATIC_LAGRANGE):
+        pBasis.InterpolationXiSet([iron.BasisInterpolationSpecifications.QUADRATIC_LAGRANGE]*numberOfDimensions)
+    else:
+        print('Invalid p interpolation')
+        exit()
+    pBasis.QuadratureNumberOfGaussXiSet([numberOfGaussXi]*numberOfDimensions)
+    pBasis.CreateFinish()
 
 # Start the creation of a generated mesh in the region
 generatedMesh = iron.GeneratedMesh()
 generatedMesh.CreateStart(generatedMeshUserNumber,region)
-generatedMesh.type = iron.GeneratedMeshTypes.REGULAR
-generatedMesh.basis = [basis]
-generatedMesh.extent = [length,width,height]
-generatedMesh.numberOfElements = [numberXElements,numberYElements,numberZElements]
+generatedMesh.TypeSet(iron.GeneratedMeshTypes.REGULAR)
+if (pInterpolation == CONSTANT_LAGRANGE):
+    generatedMesh.BasisSet([uBasis])
+else:
+    generatedMesh.BasisSet([uBasis,pBasis])
+generatedMesh.ExtentSet([width,height,length])
+generatedMesh.NumberOfElementsSet([numberOfGlobalXElements,numberOfGlobalYElements,numberOfGlobalZElements])
 # Finish the creation of a generated mesh in the region
 mesh = iron.Mesh()
 generatedMesh.CreateFinish(meshUserNumber,mesh)
@@ -133,8 +198,8 @@ generatedMesh.CreateFinish(meshUserNumber,mesh)
 # Create a decomposition for the mesh
 decomposition = iron.Decomposition()
 decomposition.CreateStart(decompositionUserNumber,mesh)
-decomposition.type = iron.DecompositionTypes.CALCULATED
-decomposition.numberOfDomains = numberOfComputationalNodes
+decomposition.TypeSet(iron.DecompositionTypes.CALCULATED)
+decomposition.NumberOfDomainsSet(numberOfComputationalNodes)
 decomposition.CreateFinish()
 
 # Create a field for the geometry
@@ -146,7 +211,7 @@ geometricField.VariableLabelSet(iron.FieldVariableTypes.U,"Geometry")
 geometricField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,1,1)
 geometricField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,2,1)
 geometricField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,3,1)
-geometricField.fieldScalingType = iron.FieldScalingTypes.ARITHMETIC_MEAN
+geometricField.ScalingTypeSet(iron.FieldScalingTypes.ARITHMETIC_MEAN)
 geometricField.CreateFinish()
 
 # Update the geometric field parameters from generated mesh
@@ -159,7 +224,7 @@ fibreField.TypeSet(iron.FieldTypes.FIBRE)
 fibreField.MeshDecompositionSet(decomposition)
 fibreField.GeometricFieldSet(geometricField)
 fibreField.VariableLabelSet(iron.FieldVariableTypes.U,"Fibre")
-fibreField.fieldScalingType = iron.FieldScalingTypes.ARITHMETIC_MEAN
+fibreField.ScalingTypeSet(iron.FieldScalingTypes.ARITHMETIC_MEAN)
 fibreField.CreateFinish()
 
 # Create the dependent field
@@ -172,8 +237,8 @@ dependentField.DependentTypeSet(iron.FieldDependentTypes.DEPENDENT)
 # Set the field to have 5 variables: U - dependent; del U/del n - tractions; U1 - strain; U2 - stress; U3 - growth
 dependentField.NumberOfVariablesSet(5)
 dependentField.VariableTypesSet([iron.FieldVariableTypes.U,iron.FieldVariableTypes.DELUDELN,iron.FieldVariableTypes.U1,iron.FieldVariableTypes.U2,iron.FieldVariableTypes.U3])
-dependentField.VariableLabelSet(iron.FieldVariableTypes.U,"Dependent")
-dependentField.VariableLabelSet(iron.FieldVariableTypes.DELUDELN,"del U/del n")
+dependentField.VariableLabelSet(iron.FieldVariableTypes.U,"Displacement")
+dependentField.VariableLabelSet(iron.FieldVariableTypes.DELUDELN,"Traction")
 dependentField.VariableLabelSet(iron.FieldVariableTypes.U1,"Strain")
 dependentField.VariableLabelSet(iron.FieldVariableTypes.U2,"Stress")
 dependentField.VariableLabelSet(iron.FieldVariableTypes.U3,"Growth")
@@ -182,8 +247,9 @@ dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.DELUDELN,4)
 dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.U1,6)
 dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.U2,6)
 dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.U3,3)
-dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U,4,iron.FieldInterpolationTypes.ELEMENT_BASED)
-dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.DELUDELN,4,iron.FieldInterpolationTypes.ELEMENT_BASED)
+if (pInterpolation == CONSTANT_LAGRANGE):
+    dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U,4,iron.FieldInterpolationTypes.ELEMENT_BASED)
+    dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.DELUDELN,4,iron.FieldInterpolationTypes.ELEMENT_BASED)
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U1,1,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U1,2,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U1,3,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
@@ -199,7 +265,7 @@ dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U2,6,iron.Field
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U3,1,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U3,2,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U3,3,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-dependentField.fieldScalingType = iron.FieldScalingTypes.ARITHMETIC_MEAN
+dependentField.ScalingTypeSet(iron.FieldScalingTypes.ARITHMETIC_MEAN)
 dependentField.CreateFinish()
 
 # Initialise dependent field from undeformed geometry
@@ -214,7 +280,7 @@ iron.Field.ParametersToFieldParametersComponentCopy(
     dependentField,iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,3)
 # Initialise the hydrostatic pressure
 iron.Field.ComponentValuesInitialiseDP(
-    dependentField,iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,4,-8.0)
+    dependentField,iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,4,pInit)
 
 # Update the dependent field
 dependentField.ParameterSetUpdateStart(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES)
@@ -236,20 +302,29 @@ equationsSet.DependentCreateFinish()
 # Create the CellML environment for the growth law. Set the rates as known so that we can spatially vary them.
 growthCellML = iron.CellML()
 growthCellML.CreateStart(growthCellMLUserNumber,region)
-growthCellMLIdx = growthCellML.ModelImport("simplegrowth.cellml")
-growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/fibrerate")
-growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/sheetrate")
-growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/normalrate")
+growthCellMLIdx = growthCellML.ModelImport("stressgrowth.cellml")
+growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/bff")
+growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/bss")
+growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/bnn")
+growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/S11")
+growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/S22")
+growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/S33")
 growthCellML.CreateFinish()
 
 # Create CellML <--> OpenCMISS field maps. Map the lambda's to the U3/growth dependent field variable
 growthCellML.FieldMapsCreateStart()
+growthCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U2,1,iron.FieldParameterSetTypes.VALUES,
+	                            growthCellMLIdx,"Main/S11",iron.FieldParameterSetTypes.VALUES)
+growthCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U2,2,iron.FieldParameterSetTypes.VALUES,
+	                            growthCellMLIdx,"Main/S22",iron.FieldParameterSetTypes.VALUES)
+growthCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U2,3,iron.FieldParameterSetTypes.VALUES,
+	                            growthCellMLIdx,"Main/S33",iron.FieldParameterSetTypes.VALUES)
 growthCellML.CreateCellMLToFieldMap(growthCellMLIdx,"Main/lambda1",iron.FieldParameterSetTypes.VALUES,
-    dependentField,iron.FieldVariableTypes.U3,1,iron.FieldParameterSetTypes.VALUES)
+                                    dependentField,iron.FieldVariableTypes.U3,1,iron.FieldParameterSetTypes.VALUES)
 growthCellML.CreateCellMLToFieldMap(growthCellMLIdx,"Main/lambda2",iron.FieldParameterSetTypes.VALUES,
-    dependentField,iron.FieldVariableTypes.U3,2,iron.FieldParameterSetTypes.VALUES)
+                                    dependentField,iron.FieldVariableTypes.U3,2,iron.FieldParameterSetTypes.VALUES)
 growthCellML.CreateCellMLToFieldMap(growthCellMLIdx,"Main/lambda3",iron.FieldParameterSetTypes.VALUES,
-    dependentField,iron.FieldVariableTypes.U3,3,iron.FieldParameterSetTypes.VALUES)
+                                    dependentField,iron.FieldVariableTypes.U3,3,iron.FieldParameterSetTypes.VALUES)
 growthCellML.FieldMapsCreateFinish()
 
 # Create the CELL models field
@@ -264,21 +339,16 @@ growthCellML.ParametersFieldCreateStart(growthCellMLParametersFieldUserNumber,gr
 growthCellMLParametersField.VariableLabelSet(iron.FieldVariableTypes.U,"GrowthParameters")
 growthCellML.ParametersFieldCreateFinish()
 
-# Set the parameters so that only the bottom layer of Gauss points has a non-zero growth rate
-for yElem in range(1, numberYElements+1):
-    for xElem in range(1, numberXElements+1):
-        elementNumber = xElem + (yElem-1)*numberXElements
-        for yGauss in range(1, numberOfGaussXi+1):
-            for xGauss in range(1, numberOfGaussXi+1):
-                gaussNumber = xGauss + (yGauss-1)*numberOfGaussXi
-                #print 'Setting growth parameter at element ',elementNumber,' and Gauss point number ',gaussNumber
-                growthCellMLParametersField.ParameterSetUpdateGaussPoint(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, gaussNumber, elementNumber, 1, xGrowthRate)
-                growthCellMLParametersField.ParameterSetUpdateGaussPoint(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, gaussNumber, elementNumber, 2, yGrowthRate)
-                growthCellMLParametersField.ParameterSetUpdateGaussPoint(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, gaussNumber, elementNumber, 3, zGrowthRate)
- 
-# Update the parameters field
-growthCellMLParametersField.ParameterSetUpdateStart(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES)
-growthCellMLParametersField.ParameterSetUpdateFinish(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES)
+# Set the growth rates
+fibreRateComponentNumber = growthCellML.FieldComponentGet(growthCellMLIdx,iron.CellMLFieldTypes.PARAMETERS,"Main/bff")
+sheetRateComponentNumber = growthCellML.FieldComponentGet(growthCellMLIdx,iron.CellMLFieldTypes.PARAMETERS,"Main/bss")
+normalRateComponentNumber = growthCellML.FieldComponentGet(growthCellMLIdx,iron.CellMLFieldTypes.PARAMETERS,"Main/bnn")
+growthCellMLParametersField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,
+                                                        fibreRateComponentNumber,fibreRate)
+growthCellMLParametersField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,
+                                                        sheetRateComponentNumber,sheetRate)
+growthCellMLParametersField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,
+                                                        normalRateComponentNumber,normalRate)
 
 # Create the CELL state field
 growthCellMLStateField = iron.Field()
@@ -290,14 +360,14 @@ growthCellML.StateFieldCreateFinish()
 constituativeCellML = iron.CellML()
 constituativeCellML.CreateStart(constituativeCellMLUserNumber,region)
 constituativeCellMLIdx = constituativeCellML.ModelImport("mooneyrivlin.cellml")
-constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/E11")
-constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/E12")
-constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/E13")
-constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/E22")
-constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/E23")
-constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/E33")
-#constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/c1")
-#constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/c2")
+constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C11")
+constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C12")
+constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C13")
+constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C22")
+constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C23")
+constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C33")
+constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/c1")
+constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/c2")
 constituativeCellML.VariableSetAsWanted(constituativeCellMLIdx,"equations/Tdev11")
 constituativeCellML.VariableSetAsWanted(constituativeCellMLIdx,"equations/Tdev12")
 constituativeCellML.VariableSetAsWanted(constituativeCellMLIdx,"equations/Tdev13")
@@ -309,17 +379,17 @@ constituativeCellML.CreateFinish()
 # Create CellML <--> OpenCMISS field maps. Map the stress and strain fields.
 constituativeCellML.FieldMapsCreateStart()
 constituativeCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,1,iron.FieldParameterSetTypes.VALUES,
-    constituativeCellMLIdx,"equations/E11",iron.FieldParameterSetTypes.VALUES)
+    constituativeCellMLIdx,"equations/C11",iron.FieldParameterSetTypes.VALUES)
 constituativeCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,2,iron.FieldParameterSetTypes.VALUES,
-    constituativeCellMLIdx,"equations/E12",iron.FieldParameterSetTypes.VALUES)
+    constituativeCellMLIdx,"equations/C12",iron.FieldParameterSetTypes.VALUES)
 constituativeCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,3,iron.FieldParameterSetTypes.VALUES,
-    constituativeCellMLIdx,"equations/E13",iron.FieldParameterSetTypes.VALUES)
+    constituativeCellMLIdx,"equations/C13",iron.FieldParameterSetTypes.VALUES)
 constituativeCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,4,iron.FieldParameterSetTypes.VALUES,
-    constituativeCellMLIdx,"equations/E22",iron.FieldParameterSetTypes.VALUES)
+    constituativeCellMLIdx,"equations/C22",iron.FieldParameterSetTypes.VALUES)
 constituativeCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,5,iron.FieldParameterSetTypes.VALUES,
-    constituativeCellMLIdx,"equations/E23",iron.FieldParameterSetTypes.VALUES)
+    constituativeCellMLIdx,"equations/C23",iron.FieldParameterSetTypes.VALUES)
 constituativeCellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,6,iron.FieldParameterSetTypes.VALUES,
-    constituativeCellMLIdx,"equations/E33",iron.FieldParameterSetTypes.VALUES)
+    constituativeCellMLIdx,"equations/C33",iron.FieldParameterSetTypes.VALUES)
 constituativeCellML.CreateCellMLToFieldMap(constituativeCellMLIdx,"equations/Tdev11",iron.FieldParameterSetTypes.VALUES,
     dependentField,iron.FieldVariableTypes.U2,1,iron.FieldParameterSetTypes.VALUES)
 constituativeCellML.CreateCellMLToFieldMap(constituativeCellMLIdx,"equations/Tdev12",iron.FieldParameterSetTypes.VALUES,
@@ -345,6 +415,14 @@ constituativeCellMLParametersField = iron.Field()
 constituativeCellML.ParametersFieldCreateStart(constituativeCellMLParametersFieldUserNumber,constituativeCellMLParametersField)
 constituativeCellMLParametersField.VariableLabelSet(iron.FieldVariableTypes.U,"ConstituativeParameters")
 constituativeCellML.ParametersFieldCreateFinish()
+
+# Set up the materials constants
+c1ComponentNumber = constituativeCellML.FieldComponentGet(constituativeCellMLIdx,iron.CellMLFieldTypes.PARAMETERS,"equations/c1")
+c2ComponentNumber = constituativeCellML.FieldComponentGet(constituativeCellMLIdx,iron.CellMLFieldTypes.PARAMETERS,"equations/c2")
+constituativeCellMLParametersField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,
+                                                               c1ComponentNumber,c1)
+constituativeCellMLParametersField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,
+                                                               c2ComponentNumber,c2)
 
 # Create the CELL intermediate field
 constituativeCellMLIntermediateField = iron.Field()
@@ -382,11 +460,11 @@ cellMLEvaluationSolver = iron.Solver()
 problem.SolversCreateStart()
 problem.SolverGet([iron.ControlLoopIdentifiers.NODE],1,odeIntegrationSolver)
 problem.SolverGet([iron.ControlLoopIdentifiers.NODE],2,nonlinearSolver)
-nonlinearSolver.outputType = iron.SolverOutputTypes.PROGRESS
+nonlinearSolver.outputType = iron.SolverOutputTypes.MONITOR
 nonlinearSolver.NewtonJacobianCalculationTypeSet(iron.JacobianCalculationTypes.FD)
-nonlinearSolver.NewtonAbsoluteToleranceSet(1e-14)
-nonlinearSolver.NewtonSolutionToleranceSet(1e-14)
-nonlinearSolver.NewtonRelativeToleranceSet(1e-14)
+nonlinearSolver.NewtonAbsoluteToleranceSet(1e-11)
+nonlinearSolver.NewtonSolutionToleranceSet(1e-11)
+nonlinearSolver.NewtonRelativeToleranceSet(1e-11)
 nonlinearSolver.NewtonCellMLSolverGet(cellMLEvaluationSolver)
 nonlinearSolver.NewtonLinearSolverGet(linearSolver)
 linearSolver.linearType = iron.LinearSolverTypes.DIRECT
@@ -414,14 +492,23 @@ problem.CellMLEquationsCreateFinish()
 boundaryConditions = iron.BoundaryConditions()
 nonlinearEquations.BoundaryConditionsCreateStart(boundaryConditions)
 
-#Set x=0 nodes to built-in
-for zNode in range(1, numberZElements+2):
-    for yNode in range(1, numberYElements+2):
-        nodeNumber = 1+(yNode-1)*(numberXElements+1)+(zNode-1)*(numberXElements+1)*(numberYElements+1)
-        #print 'Setting boundary condition at node ',nodeNumber
-        boundaryConditions.AddNode(dependentField,iron.FieldVariableTypes.U,1,1,nodeNumber,1,iron.BoundaryConditionsTypes.FIXED,0.0)
-        boundaryConditions.AddNode(dependentField,iron.FieldVariableTypes.U,1,1,nodeNumber,2,iron.BoundaryConditionsTypes.FIXED,0.0)
-        boundaryConditions.AddNode(dependentField,iron.FieldVariableTypes.U,1,1,nodeNumber,3,iron.BoundaryConditionsTypes.FIXED,0.0)
+for widthNodeIdx in range(1,numberOfXNodes+1):
+    for heightNodeIdx in range(1,numberOfYNodes+1):
+        # Set left hand build in nodes ot no displacement
+        nodeIdx=widthNodeIdx+(heightNodeIdx-1)*numberOfXNodes
+        boundaryConditions.AddNode(dependentField,iron.FieldVariableTypes.U,1,1,nodeIdx,1,
+                                   iron.BoundaryConditionsTypes.FIXED,0.0)
+        boundaryConditions.AddNode(dependentField,iron.FieldVariableTypes.U,1,1,nodeIdx,2,
+                                   iron.BoundaryConditionsTypes.FIXED,0.0)
+        boundaryConditions.AddNode(dependentField,iron.FieldVariableTypes.U,1,1,nodeIdx,3,
+                                   iron.BoundaryConditionsTypes.FIXED,0.0)
+    # Set downward force on right-hand edge
+    nodeIdx=numberOfNodes-widthNodeIdx+1
+    boundaryConditions.AddNode(dependentField,iron.FieldVariableTypes.DELUDELN,1,1,nodeIdx,2,
+                               iron.BoundaryConditionsTypes.NEUMANN_POINT,force)
+# Set reference pressure
+boundaryConditions.AddNode(dependentField,iron.FieldVariableTypes.U,1,1,numberOfNodes,4,
+                           iron.BoundaryConditionsTypes.FIXED,pRef)
  
 nonlinearEquations.BoundaryConditionsCreateFinish()
 
