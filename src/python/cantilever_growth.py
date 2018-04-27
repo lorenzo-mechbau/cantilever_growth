@@ -129,22 +129,27 @@ numberOfYNodes = numberOfGlobalYElements*(numberOfNodesXi-1)+1
 numberOfZNodes = numberOfGlobalZElements*(numberOfNodesXi-1)+1
 numberOfNodes = numberOfXNodes*numberOfYNodes*numberOfZNodes
 
+
+worldRegion = iron.Region()
+iron.Context.WorldRegionGet(worldRegion)
+
 #iron.DiagnosticsSetOn(iron.DiagnosticTypes.FROM,[1,2,3,4,5],"diagnostics",["FiniteElasticity_FiniteElementResidualEvaluate"])
 
 # Get the number of computational nodes and this computational node number
 computationEnvironment = iron.ComputationEnvironment()
+iron.Context.ComputationEnvironmentGet(computationEnvironment)
 numberOfComputationalNodes = computationEnvironment.NumberOfWorldNodesGet()
 computationalNodeNumber = computationEnvironment.WorldNodeNumberGet()
 
 # Create a 3D rectangular cartesian coordinate system
 coordinateSystem = iron.CoordinateSystem()
-coordinateSystem.CreateStart(coordinateSystemUserNumber)
+coordinateSystem.CreateStart(coordinateSystemUserNumber,iron.Context)
 coordinateSystem.DimensionSet(numberOfDimensions)
 coordinateSystem.CreateFinish()
 
 # Create a region and assign the coordinate system to the region
 region = iron.Region()
-region.CreateStart(regionUserNumber,iron.WorldRegion)
+region.CreateStart(regionUserNumber,worldRegion)
 region.LabelSet("Region")
 region.CoordinateSystemSet(coordinateSystem)
 region.CreateFinish()
@@ -152,7 +157,7 @@ region.CreateFinish()
 # Define basis functions
 
 uBasis = iron.Basis()
-uBasis.CreateStart(uBasisUserNumber)
+uBasis.CreateStart(uBasisUserNumber,iron.Context)
 uBasis.NumberOfXiSet(numberOfDimensions)
 uBasis.TypeSet(iron.BasisTypes.LAGRANGE_HERMITE_TP)
 if (uInterpolation == LINEAR_LAGRANGE):
@@ -169,7 +174,7 @@ uBasis.CreateFinish()
 
 if (pInterpolation > CONSTANT_LAGRANGE):
     pBasis = iron.Basis()
-    pBasis.CreateStart(pBasisUserNumber)
+    pBasis.CreateStart(pBasisUserNumber,iron.Context)
     pBasis.NumberOfXiSet(numberOfDimensions)
     pBasis.TypeSet(iron.BasisTypes.LAGRANGE_HERMITE_TP)
     if (pInterpolation == LINEAR_LAGRANGE):
@@ -443,7 +448,7 @@ problem = iron.Problem()
 problemSpecification = [iron.ProblemClasses.ELASTICITY,
         iron.ProblemTypes.FINITE_ELASTICITY,
         iron.ProblemSubtypes.FINITE_ELASTICITY_WITH_GROWTH_CELLML]
-problem.CreateStart(problemUserNumber,problemSpecification)
+problem.CreateStart(problemUserNumber,iron.Context,problemSpecification)
 problem.CreateFinish()
 
 # Create control loops
