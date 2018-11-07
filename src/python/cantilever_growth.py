@@ -48,6 +48,12 @@ import sys, os
 # Intialise OpenCMISS
 from opencmiss.iron import iron
 
+# Path from command line argument or cd
+if len(sys.argv) > 1:
+    file_root_directory = sys.argv[1]
+else:
+    file_root_directory = os.path.dirname(__file__)
+
 CONSTANT_LAGRANGE = 0
 LINEAR_LAGRANGE = 1
 QUADRATIC_LAGRANGE = 2
@@ -132,9 +138,11 @@ numberOfNodes = numberOfXNodes*numberOfYNodes*numberOfZNodes
 #iron.DiagnosticsSetOn(iron.DiagnosticTypes.FROM,[1,2,3,4,5],"diagnostics",["FiniteElasticity_FiniteElementResidualEvaluate"])
 
 # Get the number of computational nodes and this computational node number
-computationEnvironment = iron.ComputationEnvironment()
-numberOfComputationalNodes = computationEnvironment.NumberOfWorldNodesGet()
-computationalNodeNumber = computationEnvironment.WorldNodeNumberGet()
+#computationEnvironment = iron.ComputationEnvironment()
+#numberOfComputationalNodes = computationEnvironment.NumberOfWorldNodesGet()
+#computationalNodeNumber = computationEnvironment.WorldNodeNumberGet()
+numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
+computationalNodeNumber = iron.ComputationalNodeNumberGet()
 
 # Create a 3D rectangular cartesian coordinate system
 coordinateSystem = iron.CoordinateSystem()
@@ -303,7 +311,11 @@ equationsSet.DependentCreateFinish()
 # Create the CellML environment for the growth law. Set the rates as known so that we can spatially vary them.
 growthCellML = iron.CellML()
 growthCellML.CreateStart(growthCellMLUserNumber,region)
-growthCellMLIdx = growthCellML.ModelImport("stressgrowth.cellml")
+
+stressgrowth_fileName = os.path.join(file_root_directory, "stressgrowth.cellml")
+growthCellMLIdx = growthCellML.ModelImport(stressgrowth_fileName)
+# growthCellMLIdx = growthCellML.ModelImport("stressgrowth.cellml")
+
 growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/bff")
 growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/bss")
 growthCellML.VariableSetAsKnown(growthCellMLIdx,"Main/bnn")
@@ -360,7 +372,11 @@ growthCellML.StateFieldCreateFinish()
 # Create the CellML environment for the consitutative law
 constituativeCellML = iron.CellML()
 constituativeCellML.CreateStart(constituativeCellMLUserNumber,region)
-constituativeCellMLIdx = constituativeCellML.ModelImport("mooneyrivlin.cellml")
+
+mooneyrivlin_fileName = os.path.join(file_root_directory, "mooneyrivlin.cellml")
+constituativeCellMLIdx = constituativeCellML.ModelImport(mooneyrivlin_fileName)
+#constituativeCellMLIdx = constituativeCellML.ModelImport("mooneyrivlin.cellml")
+
 constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C11")
 constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C12")
 constituativeCellML.VariableSetAsKnown(constituativeCellMLIdx,"equations/C13")
@@ -525,4 +541,7 @@ fields.CreateRegion(region)
 fields.NodesExport("./results/CantileverGrowth","FORTRAN")
 fields.ElementsExport("./results/CantileverGrowth","FORTRAN")
 fields.Finalise()
+
+# Finalise OpenCMISS-Iron
+iron.Finalise()
 
